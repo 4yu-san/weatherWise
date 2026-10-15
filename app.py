@@ -207,4 +207,12 @@ def num(value, digits=3):
 
 
 if __name__ == "__main__":
+    import sys
+    import threading
+    import webbrowser
+
+    url = "http://127.0.0.1:5000"
+    if "--open" in sys.argv:  # used by start.bat: open the browser once the server is up
+        threading.Timer(1.5, webbrowser.open, args=[url]).start()
+    print(f"WeatherWise running at {url}  (press Ctrl+C to stop)")
     app.run(host="127.0.0.1", port=5000, debug=False)

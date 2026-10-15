@@ -13,15 +13,21 @@ Every prediction comes from a saved, trained model. Every metric and chart comes
 
 ## Requirements
 
-- **Python 3.12 or newer** (built and tested with Python 3.14 on Linux; the pinned package versions need 3.12+)
-- No API keys, databases or internet connection are needed once dependencies are installed. Chart.js is bundled in `static/vendor/`.
+- **Python 3.9 or newer.** Tested on Linux with Python 3.9, 3.10, 3.12 and 3.14 (fresh install from `requirements.txt` plus the full test suite). Not yet tested on Windows itself.
+- Internet access for the one-time `pip install`. No API keys, databases or internet connection are needed once dependencies are installed. After that nothing needs internet. Chart.js is bundled in `static/vendor/`.
 
 ## Setup and run
+
+### Windows: quick start (double-click)
+
+Double-click **`start.bat`** in the project folder. The first run creates a `.venv`, installs the packages, **trains the models on that computer** and opens the site in your browser. Every later run just starts the server. Close the window to stop it.
+
+If it fails, the window stays open with a message. Run the manual PowerShell steps below and see Troubleshooting.
 
 ### Linux / macOS
 
 ```bash
-cd weatherwise
+cd weatherWise
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -29,10 +35,10 @@ python -m ml.train_models      # trains models, writes models/*.joblib + metrics
 python app.py                  # starts the server
 ```
 
-### Windows (PowerShell)
+### Windows (PowerShell, manual steps)
 
 ```powershell
-cd weatherwise
+cd weatherWise
 py -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
@@ -65,8 +71,9 @@ Replace the CSV (same columns and labels), then run `python -m ml.train_models` 
 ## Project structure
 
 ```text
-weatherwise/
+weatherWise/
 ├── app.py                    Flask routes (pages + JSON API); never trains
+├── start.bat                 Windows one-click setup + start
 ├── requirements.txt
 ├── data/Weather_classification_Logistic.csv
 ├── models/                   created by the training script
@@ -140,12 +147,16 @@ curl -X POST http://127.0.0.1:5000/api/predict-rain \
 
 | Problem | Fix |
 |---|---|
-| "Trained model not found" / empty dashboards | Run `python -m ml.train_models` from the `weatherwise` folder. |
-| "trained with scikit-learn X but Y is installed" | Retrain with `python -m ml.train_models`, or install the version in `requirements.txt`. |
+| "Trained model not found" / empty dashboards | Run `python -m ml.train_models` from the `weatherWise` folder. |
+| "trained with scikit-learn X but Y is installed" | Normal on a new computer. Retrain with `python -m ml.train_models` (takes seconds). `start.bat` and the tests do this automatically. |
 | "Dataset not found" | Put the CSV at `data/Weather_classification_Logistic.csv`. |
-| `ModuleNotFoundError: ml` | Run commands from inside the `weatherwise` folder, using `python -m ml.train_models` (not `python ml/train_models.py`). |
+| `ModuleNotFoundError: ml` | Run commands from inside the `weatherWise` folder, using `python -m ml.train_models` (not `python ml/train_models.py`). |
 | `ModuleNotFoundError: flask` / `sklearn` | Activate the virtual environment first, then `pip install -r requirements.txt`. |
 | PowerShell blocks `Activate.ps1` | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or use `cmd.exe` with `activate.bat`. |
+| `start.bat` says Python was not found, or opens the Microsoft Store | Install Python from python.org (the “Install just for me” option needs no admin rights) and tick “Add python.exe to PATH”. In Windows Settings → Apps → Advanced app settings → App execution aliases, switch off the “python.exe” Store alias. |
+| `pip install` fails or times out (proxy / blocked network) | Ask IT for the proxy, then run `.venv\Scripts\python.exe -m pip install --proxy http://user:pass@host:port -r requirements.txt`, or install the packages at home and copy the whole folder (including `.venv`) only if both PCs have the same Python version and path. |
+| `start.bat` is blocked or closes instantly | Open `cmd.exe`, `cd` to the folder and run `start.bat` to see the error message. If .bat files are blocked, use the manual PowerShell steps. |
+| Browser shows “can't connect” right after start | Wait a few seconds and refresh, or open http://127.0.0.1:5000 yourself. |
 | Port 5000 already in use (e.g. macOS AirPlay) | Change `port=5000` at the bottom of `app.py`, e.g. to `5050`. |
 
 ## Security note

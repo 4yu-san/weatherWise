@@ -27,9 +27,15 @@ def trained():
 
 @pytest.fixture(scope="session")
 def ensure_artifacts():
-    """The API tests need saved artifacts; train them if they are missing."""
-    paths = [config.RAIN_MODEL_PATH, config.CLOUD_MODEL_PATH, config.METRICS_PATH]
-    if not all(p.exists() for p in paths):
+    """The API tests need loadable saved models. If they are missing, or were saved
+    by a different scikit-learn version than the one installed (the case on a new
+    machine), retrain them first."""
+    from ml.predict import ModelArtifactError, load_bundle
+    try:
+        load_bundle(config.RAIN_MODEL_PATH, "rain_classification")
+        load_bundle(config.CLOUD_MODEL_PATH, "cloud_regression")
+        assert config.METRICS_PATH.exists()
+    except (ModelArtifactError, AssertionError):
         from ml.train_models import main
         assert main() == 0
 
