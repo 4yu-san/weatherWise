@@ -13,7 +13,7 @@ Every prediction comes from a saved, trained model. Every metric and chart comes
 
 ## Requirements
 
-- **Python 3.11 or newer** (built and tested with Python 3.14)
+- **Python 3.12 or newer** (built and tested with Python 3.14 on Linux; the pinned package versions need 3.12+)
 - No API keys, databases or internet connection are needed once dependencies are installed. Chart.js is bundled in `static/vendor/`.
 
 ## Setup and run
