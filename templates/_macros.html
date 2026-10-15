@@ -1,0 +1,30 @@
+{# Numeric input with label, description, valid range and training-range hint. #}
+{% macro number_field(name, limits, descriptions, summary) -%}
+  {% set lo, hi = limits[name] %}
+  {% set s = summary.feature_stats[name] if summary else None %}
+  <div class="field">
+    <label for="f-{{ name }}">{{ name | replace('_', ' ') }} <code class="field-code">{{ name }}</code></label>
+    <input id="f-{{ name }}" name="{{ name }}" type="number" inputmode="decimal" step="any"
+           min="{{ lo }}" max="{{ hi }}" required
+           {% if s %}placeholder="dataset mean {{ '%.1f' | format(s.mean) }}"{% endif %}
+           aria-describedby="h-{{ name }} e-{{ name }}">
+    <p class="field-hint" id="h-{{ name }}">
+      {{ descriptions[name] }}.
+      {% if s %}Training data range: {{ '%.1f' | format(s.min) }} to {{ '%.1f' | format(s.max) }}.{% endif %}
+      Unit not documented.
+    </p>
+    <p class="field-error" id="e-{{ name }}" aria-live="polite"></p>
+  </div>
+{%- endmacro %}
+
+{% macro model_select(choices, id) -%}
+  <div class="field">
+    <label for="{{ id }}">Model</label>
+    <select id="{{ id }}" name="model">
+      {% for key, label in choices.models.items() %}
+        <option value="{{ key }}" {% if key == choices.selected %}selected{% endif %}>{{ label }}{% if key == choices.selected %} (selected){% endif %}</option>
+      {% endfor %}
+    </select>
+    <p class="field-hint">The “selected” model was chosen by cross-validation on the training data.</p>
+  </div>
+{%- endmacro %}

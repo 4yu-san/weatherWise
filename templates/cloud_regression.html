@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "_macros.html" import number_field, model_select %}
+{% block title %}Cloud Cover Regression{% endblock %}
+{% block content %}
+<header class="page-header">
+  <p class="eyebrow">Multiple regression</p>
+  <h1>Cloud Cover Regression</h1>
+  <p class="lead-dark">Dependent variable <code>Y = Cloud_Cover</code>. Independent variables <code>X = Temperature, Humidity, Wind_Speed, Pressure</code>. This task is trained separately from rain classification, and <code>Cloud_Cover</code> is never one of its inputs.</p>
+</header>
+
+{% if metrics %}
+  {% set r = metrics.regression %}
+  {% set lin = r.models.linear_regression.interpretation %}
+  <section class="card equation-card" aria-labelledby="eq-heading">
+    <h2 id="eq-heading">Fitted multiple linear regression equation</h2>
+    <p class="equation">
+      <span>Cloud_Cover</span> = {{ '%.3f' | format(lin.intercept) }}
+      {% for name, b in lin.coefficients.items() %}
+        {{ '−' if b < 0 else '+' }} {{ '%.4f' | format(b | abs) }}·<span>{{ name }}</span>
+      {% endfor %}
+    </p>
+    <p class="muted small">Coefficients estimated by ordinary least squares on the {{ r.n_train }} training records and written in the original (undocumented) units of each column.</p>
+    {% set sel = r.models[r.selected] %}
+    {% if sel.test.r2 < 0.05 %}
+    <div class="notice notice-warn" role="note">
+      <strong>Honest result:</strong> on the held-out test set the selected model scores R² = {{ sel.test.r2 | num(4) }}. A model that always predicts the training mean ({{ r.mean_baseline.constant_prediction | num(1) }}) scores R² = {{ r.mean_baseline.r2 | num(4) }}. In this dataset, Temperature, Humidity, Wind_Speed and Pressure carry almost no information about <code>Cloud_Cover</code>, so predictions stay close to the average. The regression method itself works; this dataset simply contains no relationship that either a linear or a non-linear model could detect.
+    </div>
+    {% endif %}
+  </section>
+{% endif %}
+
+{% if model_error %}
+  <div class="card empty-state" role="alert">
+    <h2>Model not available</h2>
+    <p>{{ model_error }}</p>
+  </div>
+{% else %}
+<div class="predict-layout">
+  <form id="cloud-form" class="card form-card" novalidate data-endpoint="{{ url_for('api_predict_cloud_cover') }}">
+    <h2>Independent variables</h2>
+    <div class="form-grid">
+      {% for name in features %}{{ number_field(name, limits, descriptions, summary) }}{% endfor %}
+    </div>
+    {{ model_select(choices, 'cloud-model') }}
+    <p class="form-error" role="alert" hidden></p>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-lg">
+        <span class="btn-label">Predict Cloud Cover</span><span class="spinner" aria-hidden="true"></span>
+      </button>
+      <button type="reset" class="btn btn-secondary">Reset</button>
+    </div>
+  </form>
+
+  <section class="card result-card" aria-labelledby="cloud-result-heading" aria-live="polite" aria-busy="false" id="cloud-result">
+    <h2 id="cloud-result-heading">Predicted cloud cover</h2>
+    <div class="result-empty">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 19a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 18 11.5a3.75 3.75 0 0 1-.5 7.5z"/></svg>
+      <p>Fill in the four values and press <strong>Predict Cloud Cover</strong>.</p>
+    </div>
+    <div class="result-loading" hidden><span class="spinner spinner-dark" aria-hidden="true"></span> Running the model…</div>
+    <div class="result-body" hidden>
+      <p class="result-kicker">Predicted <code>Cloud_Cover</code> (same 0–100 scale as the dataset column)</p>
+      <p class="result-big" data-out="value">–</p>
+      <div class="meter meter-cloud" role="img" data-out="meter-label">
+        <div class="meter-fill" data-out="meter"></div>
+      </div>
+      <div class="meter-scale" aria-hidden="true"><span>0</span><span>50</span><span>100</span></div>
+      <dl class="kv">
+        <dt>Model used</dt><dd data-out="model">–</dd>
+        <dt>Raw model output</dt><dd data-out="raw">–</dd>
+        <dt>Model's test R² / RMSE</dt><dd data-out="quality">–</dd>
+      </dl>
+      <p data-out="explanation"></p>
+      <ul class="warnings" data-out="warnings"></ul>
+    </div>
+  </section>
+</div>
+{% endif %}
+
+<details class="card details-card" id="methodology">
+  <summary>Methodology: how the two regression models were built and compared</summary>
+  <h3>Multiple Linear Regression (the linear baseline)</h3>
+  <p>Fits one straight-line (additive) relationship: each independent variable has a fixed coefficient, and the prediction is the intercept plus each coefficient times its input. It is fast and easy to interpret. It cannot capture curves or interactions unless those are added by hand, which makes it the natural <em>baseline</em>.</p>
+  <h3>Random Forest Regressor (the non-linear alternative)</h3>
+  <p>Builds many decision trees on bootstrap samples of the training data and averages their outputs. The trees split on thresholds, so the forest can model non-linear effects and interactions between variables automatically. The cost is lower interpretability and a higher risk of fitting noise.</p>
+  <h3>Fair comparison &amp; selection</h3>
+  <ul>
+    <li>Both models use the <strong>same 80:20 train/test split</strong> (random seed {{ metrics.random_state if metrics else 42 }}).</li>
+    <li>Pre-processing (standardisation for the linear model) sits inside a scikit-learn <code>Pipeline</code>, so it is fitted on training data only.</li>
+    <li>Random Forest hyper-parameters and the choice between the two models are decided with <strong>5-fold cross-validation on the training data</strong>. {% if metrics %}{{ metrics.regression.selection_rule }}{% endif %}</li>
+    <li>The test set is used once, at the end, to report R², MAE and RMSE.</li>
+    {% if metrics %}<li><strong>Outcome:</strong> {{ metrics.regression.selection_reason }}</li>
+    <li><strong>Output policy:</strong> {{ metrics.regression.output_policy }}</li>{% endif %}
+  </ul>
+  <p><a href="{{ url_for('model_evaluation_page') }}#regression">See the regression evaluation, actual-vs-predicted plot and comparison charts →</a></p>
+</details>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/cloud_regression.js') }}"></script>{% endblock %}

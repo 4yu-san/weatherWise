@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}Model Evaluation{% endblock %}
+{% block content %}
+<header class="page-header">
+  <p class="eyebrow">Results dashboard</p>
+  <h1>Model Evaluation</h1>
+  <p class="lead-dark">Every metric, table and chart below is computed from the trained models' predictions on held-out test data, as saved by <code>ml/train_models.py</code>.</p>
+</header>
+
+{% if not metrics %}
+  <div class="card empty-state" role="alert">
+    <h2>No evaluation results yet</h2>
+    <p>Train the models first: run <code>python -m ml.train_models</code> in the project folder, then reload this page.</p>
+    {% if data_error %}<p class="notice notice-error">{{ data_error }}</p>{% endif %}
+  </div>
+{% else %}
+{% set c = metrics.classification %}{% set r = metrics.regression %}
+{% set lr = c.models.logistic_regression %}{% set rfc = c.models.random_forest %}
+{% set lin = r.models.linear_regression %}{% set rfr = r.models.random_forest %}
+
+<nav class="toc card" aria-label="On this page">
+  <a href="#setup">Setup</a><a href="#classification">A. Classification</a><a href="#regression">B. Regression</a><a href="#selection">C. Model selection</a><a href="#concepts">D. Concepts</a><a href="#limitations">Limitations</a>
+</nav>
+
+<section id="setup" class="card">
+  <h2>Experimental setup</h2>
+  <div class="grid grid-2">
+    <dl class="kv">
+      <dt>Records used</dt><dd>{{ "{:,}".format(metrics.dataset.rows) }}</dd>
+      <dt>Train / test split</dt><dd>{{ ((1 - metrics.test_size) * 100) | round | int }} : {{ (metrics.test_size * 100) | round | int }}</dd>
+      <dt>Random seed</dt><dd>{{ metrics.random_state }}</dd>
+      <dt>Cross-validation</dt><dd>{{ c.cv_folds }}-fold, training data only</dd>
+    </dl>
+    <dl class="kv">
+      <dt>Trained on</dt><dd>{{ metrics.generated_at }}</dd>
+      <dt>scikit-learn</dt><dd>{{ metrics.sklearn_version }}</dd>
+      <dt>Classification split</dt><dd>stratified · {{ c.n_train }} train / {{ c.n_test }} test</dd>
+      <dt>Regression split</dt><dd>random · {{ r.n_train }} train / {{ r.n_test }} test</dd>
+    </dl>
+  </div>
+</section>
+
+<!-- ======================= A. CLASSIFICATION ======================= -->
+<section id="classification" class="card">
+  <p class="eyebrow">A · Classification</p>
+  <h2>Rain classification: Logistic Regression vs Random Forest</h2>
+  <p>Target <code>Rain</code> (positive class <code>rain</code>); features {% for f in c.features %}<code>{{ f }}</code>{{ ", " if not loop.last }}{% endfor %}. Both classifiers use <code>class_weight="balanced"</code>. Decision threshold: <strong>{{ c.threshold }}</strong>. Rain share: {{ c.train_rain_share | pct }} in training and {{ c.test_rain_share | pct }} in testing (stratified).</p>
+
+  <div class="notice notice-info">
+    <strong>Why accuracy alone is not enough:</strong> only {{ metrics.dataset.target_distribution['rain'].percent }}% of records are <code>rain</code>. A useless model that always answers “no rain” would score <strong>{{ c.majority_baseline_accuracy | pct }}</strong> accuracy on this test set while catching zero rain events. We therefore focus on <strong>recall</strong> (what share of real rain cases were caught), <strong>precision</strong> (what share of rain predictions were correct), and their balance, the <strong>F1-score</strong>, all for the minority <code>rain</code> class.
+  </div>
+
+  <h3>Test-set metrics</h3>
+  <div class="table-wrap">
+    <table class="data-table metrics-table">
+      <caption>Held-out test set, {{ c.n_test }} records. “Rain” rows treat <code>rain</code> as the positive class. “Macro” rows are the unweighted mean over both classes.</caption>
+      <thead><tr><th scope="col">Metric</th><th scope="col"><span class="key key-a" aria-hidden="true"></span>{{ lr.name }}</th><th scope="col"><span class="key key-b" aria-hidden="true"></span>{{ rfc.name }}</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Accuracy</th><td>{{ lr.test.accuracy | num }}</td><td>{{ rfc.test.accuracy | num }}</td></tr>
+        <tr><th scope="row">Balanced accuracy</th><td>{{ lr.test.balanced_accuracy | num }}</td><td>{{ rfc.test.balanced_accuracy | num }}</td></tr>
+        <tr class="row-focus"><th scope="row">Precision (rain)</th><td>{{ lr.test.precision_rain | num }}</td><td>{{ rfc.test.precision_rain | num }}</td></tr>
+        <tr class="row-focus"><th scope="row">Recall (rain)</th><td>{{ lr.test.recall_rain | num }}</td><td>{{ rfc.test.recall_rain | num }}</td></tr>
+        <tr class="row-focus"><th scope="row">F1-score (rain)</th><td>{{ lr.test.f1_rain | num }}</td><td>{{ rfc.test.f1_rain | num }}</td></tr>
+        <tr><th scope="row">Precision (macro avg)</th><td>{{ lr.test.precision_macro | num }}</td><td>{{ rfc.test.precision_macro | num }}</td></tr>
+        <tr><th scope="row">Recall (macro avg)</th><td>{{ lr.test.recall_macro | num }}</td><td>{{ rfc.test.recall_macro | num }}</td></tr>
+        <tr><th scope="row">F1-score (macro avg)</th><td>{{ lr.test.f1_macro | num }}</td><td>{{ rfc.test.f1_macro | num }}</td></tr>
+        <tr><th scope="row">ROC-AUC</th><td>{{ lr.test.roc_auc | num }}</td><td>{{ rfc.test.roc_auc | num }}</td></tr>
+        <tr><th scope="row">Brier score (lower is better)</th><td>{{ lr.test.brier_score | num(4) }}</td><td>{{ rfc.test.brier_score | num(4) }}</td></tr>
+        <tr class="row-sep"><th scope="row">CV F1 (rain), training data</th><td>{{ lr.cv.f1_mean | num }} ± {{ lr.cv.f1_std | num }}</td><td>{{ rfc.cv.f1_mean | num }} ± {{ rfc.cv.f1_std | num }}</td></tr>
+        <tr><th scope="row">Training-set F1 (rain)</th><td>{{ lr.train.f1_rain | num }}</td><td>{{ rfc.train.f1_rain | num }}</td></tr>
+        <tr><th scope="row">Tuned hyper-parameters</th><td>{% for k, v in lr.best_params.items() %}<code>{{ k }}={{ v }}</code> {% endfor %}</td><td>{% for k, v in rfc.best_params.items() %}<code>{{ k }}={{ v }}</code> {% endfor %}</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Confusion matrices (test set)</h3>
+  <div class="grid grid-2">
+    {% for m in [lr, rfc] %}
+    {% set cm = m.test.confusion_matrix %}
+    <figure class="cm-figure">
+      <figcaption><strong>{{ m.name }}</strong></figcaption>
+      <table class="confusion" aria-label="Confusion matrix for {{ m.name }}: rows are actual classes, columns are predicted classes">
+        <thead>
+          <tr><td class="cm-corner" colspan="2" rowspan="2"></td><th colspan="2" scope="colgroup" class="cm-axis">Predicted class</th></tr>
+          <tr>{% for lbl in cm.labels %}<th scope="col">{{ lbl }}</th>{% endfor %}</tr>
+        </thead>
+        <tbody>
+        {% set row_total = [cm.matrix[0] | sum, cm.matrix[1] | sum] %}
+        {% for i in range(2) %}
+          <tr>
+            {% if i == 0 %}<th rowspan="2" scope="rowgroup" class="cm-axis cm-axis-v"><span>Actual class</span></th>{% endif %}
+            <th scope="row">{{ cm.labels[i] }}</th>
+            {% for j in range(2) %}
+              {% set v = cm.matrix[i][j] %}
+              {% set share = (v / row_total[i]) if row_total[i] else 0 %}
+              <td class="cm-cell {{ 'cm-correct' if i == j else 'cm-wrong' }}" style="--share: {{ '%.3f' | format(share) }}">
+                <span class="cm-count">{{ v }}</span>
+                <span class="cm-share">{{ (share * 100) | round(1) }}% of actual {{ cm.labels[i] }}</span>
+                <span class="cm-tag">{{ ['TN','FP','FN','TP'][i * 2 + j] }}</span>
+              </td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </figure>
+    {% endfor %}
+  </div>
+  <p class="muted small">TN = true negative, FP = false positive (false alarm), FN = false negative (missed rain), TP = true positive. Cell shading shows the share of each actual class.</p>
+
+  <div class="grid grid-2 chart-grid">
+    <figure class="chart-figure">
+      <figcaption>Rain-class metrics, test set (higher is better)</figcaption>
+      <div class="chart-box"><canvas id="chart-cls-compare" role="img" aria-label="Grouped bar chart comparing precision, recall, F1 and ROC-AUC for the rain class between the two classifiers. Values are listed in the table above."></canvas></div>
+    </figure>
+    <figure class="chart-figure">
+      <figcaption>ROC curve, test set</figcaption>
+      <div class="chart-box"><canvas id="chart-roc" role="img" aria-label="ROC curves for both classifiers: true positive rate against false positive rate. ROC-AUC values are listed in the table above."></canvas></div>
+    </figure>
+  </div>
+
+  <details class="details-inline">
+    <summary>Full classification reports</summary>
+    <div class="grid grid-2">
+    {% for m in [lr, rfc] %}
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>{{ m.name }}</caption>
+          <thead><tr><th scope="col">Class</th><th scope="col">Precision</th><th scope="col">Recall</th><th scope="col">F1</th><th scope="col">Support</th></tr></thead>
+          <tbody>
+          {% for cls in ['no rain', 'rain', 'macro avg', 'weighted avg'] %}
+            {% set row = m.test.classification_report[cls] %}
+            <tr><th scope="row">{{ cls }}</th><td>{{ row.precision | num }}</td><td>{{ row.recall | num }}</td><td>{{ row['f1-score'] | num }}</td><td>{{ row.support | int }}</td></tr>
+          {% endfor %}
+          <tr><th scope="row">accuracy</th><td colspan="3">{{ m.test.classification_report.accuracy | num }}</td><td>{{ m.test.n_samples }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    {% endfor %}
+    </div>
+  </details>
+
+  <details class="details-inline">
+    <summary>What did each model learn? (coefficients / feature importances)</summary>
+    <div class="grid grid-2">
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>{{ lr.name }}: standardised coefficients (positive = pushes towards rain)</caption>
+          <tbody>{% for k, v in lr.interpretation['values'].items() %}<tr><th scope="row"><code>{{ k }}</code></th><td>{{ v | num(3) }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <caption>{{ rfc.name }}: impurity-based feature importances</caption>
+          <tbody>{% for k, v in rfc.interpretation['values'].items() %}<tr><th scope="row"><code>{{ k }}</code></th><td>{{ v | num(3) }}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    </div>
+  </details>
+</section>
+
+<!-- ======================= B. REGRESSION ======================= -->
+<section id="regression" class="card">
+  <p class="eyebrow">B · Regression</p>
+  <h2>Cloud-cover regression: Multiple Linear Regression vs Random Forest</h2>
+  <p><code>Y = {{ r.target }}</code>, <code>X = {{ r.features | join(', ') }}</code>. Both models use the same split: {{ r.n_train }} training and {{ r.n_test }} test records. A “mean baseline”, which always predicts the training mean, is included as a reference point. It is not a competitor.</p>
+
+  <div class="table-wrap">
+    <table class="data-table metrics-table">
+      <caption>Held-out test set metrics on raw (unclipped) predictions</caption>
+      <thead><tr><th scope="col">Metric</th><th scope="col"><span class="key key-a" aria-hidden="true"></span>{{ lin.name }}</th><th scope="col"><span class="key key-b" aria-hidden="true"></span>{{ rfr.name }}</th><th scope="col"><span class="key key-base" aria-hidden="true"></span>Mean baseline</th></tr></thead>
+      <tbody>
+        <tr class="row-focus"><th scope="row">R² (higher is better)</th><td>{{ lin.test.r2 | num(4) }}</td><td>{{ rfr.test.r2 | num(4) }}</td><td>{{ r.mean_baseline.r2 | num(4) }}</td></tr>
+        <tr class="row-focus"><th scope="row">MAE (lower is better)</th><td>{{ lin.test.mae | num(3) }}</td><td>{{ rfr.test.mae | num(3) }}</td><td>{{ r.mean_baseline.mae | num(3) }}</td></tr>
+        <tr class="row-focus"><th scope="row">RMSE (lower is better)</th><td>{{ lin.test.rmse | num(3) }}</td><td>{{ rfr.test.rmse | num(3) }}</td><td>{{ r.mean_baseline.rmse | num(3) }}</td></tr>
+        <tr class="row-sep"><th scope="row">CV RMSE, training data</th><td>{{ lin.cv.rmse_mean | num(3) }} ± {{ lin.cv.rmse_std | num(3) }}</td><td>{{ rfr.cv.rmse_mean | num(3) }} ± {{ rfr.cv.rmse_std | num(3) }}</td><td>–</td></tr>
+        <tr><th scope="row">CV R², training data</th><td>{{ lin.cv.r2_mean | num(4) }}</td><td>{{ rfr.cv.r2_mean | num(4) }}</td><td>–</td></tr>
+        <tr><th scope="row">Training-set R²</th><td>{{ lin.train.r2 | num(4) }}</td><td>{{ rfr.train.r2 | num(4) }}</td><td>–</td></tr>
+        <tr><th scope="row">Test predictions outside 0–100</th><td>{{ lin.test.n_outside_0_100 }}</td><td>{{ rfr.test.n_outside_0_100 }}</td><td>{{ r.mean_baseline.n_outside_0_100 }}</td></tr>
+        <tr><th scope="row">Range of test predictions</th><td>{{ lin.test.prediction_min | num(1) }} to {{ lin.test.prediction_max | num(1) }}</td><td>{{ rfr.test.prediction_min | num(1) }} to {{ rfr.test.prediction_max | num(1) }}</td><td>{{ r.mean_baseline.constant_prediction | num(1) }}</td></tr>
+        <tr><th scope="row">Tuned hyper-parameters</th><td>none</td><td>{% for k, v in rfr.best_params.items() %}<code>{{ k }}={{ v }}</code> {% endfor %}</td><td>–</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  {% if [lin.test.r2, rfr.test.r2] | max < 0.05 %}
+  <div class="notice notice-warn">
+    <strong>Interpreting these results:</strong> both models score R² close to zero on the test set{% if [lin.test.rmse, rfr.test.rmse] | min >= r.mean_baseline.rmse %}, and neither beats the mean baseline{% endif %}. Temperature, Humidity, Wind_Speed and Pressure carry almost no information about <code>Cloud_Cover</code> in this dataset; their Pearson correlations with it in the training data are {% for k, v in r.train_correlations.items() %}<code>{{ k }}</code> {{ v | num(3) }}{{ ', ' if not loop.last }}{% endfor %}. The Random Forest's higher training R² ({{ rfr.train.r2 | num(3) }}) compared with its test R² ({{ rfr.test.r2 | num(3) }}) shows <strong>overfitting</strong>: it learned noise that does not carry over to unseen data. This is a property of the data, not a bug in the pipeline, and it is reported honestly instead of being tuned away on the test set.
+  </div>
+  {% endif %}
+
+  <h3>Actual vs predicted cloud cover (test set)</h3>
+  <div class="grid grid-2 chart-grid">
+    <figure class="chart-figure">
+      <figcaption><span class="key key-a" aria-hidden="true"></span>{{ lin.name }}</figcaption>
+      <div class="chart-box chart-square"><canvas id="chart-avp-linear" role="img" aria-label="Scatter plot of actual Cloud_Cover on the x-axis against Multiple Linear Regression predictions on the y-axis for {{ r.n_test }} test records, with a dashed line marking perfect predictions."></canvas></div>
+    </figure>
+    <figure class="chart-figure">
+      <figcaption><span class="key key-b" aria-hidden="true"></span>{{ rfr.name }}</figcaption>
+      <div class="chart-box chart-square"><canvas id="chart-avp-rf" role="img" aria-label="Scatter plot of actual Cloud_Cover on the x-axis against Random Forest predictions on the y-axis for {{ r.n_test }} test records, with a dashed line marking perfect predictions."></canvas></div>
+    </figure>
+  </div>
+  <p class="muted small">Points on the dashed diagonal would be perfect predictions. Points in a flat horizontal band mean the model predicts nearly the same value whatever the true cloud cover.</p>
+
+  <h3>Model comparison</h3>
+  <div class="grid grid-2 chart-grid">
+    <figure class="chart-figure">
+      <figcaption>Error metrics, test set (lower is better)</figcaption>
+      <div class="chart-box"><canvas id="chart-reg-errors" role="img" aria-label="Grouped bar chart of MAE and RMSE for both regressors and the mean baseline. Values are listed in the table above."></canvas></div>
+    </figure>
+    <figure class="chart-figure">
+      <figcaption>R², test set (higher is better; 0 = no better than the mean)</figcaption>
+      <div class="chart-box"><canvas id="chart-reg-r2" role="img" aria-label="Bar chart of test-set R² for both regressors and the mean baseline. Values are listed in the table above."></canvas></div>
+    </figure>
+  </div>
+</section>
+
+<!-- ======================= C. MODEL SELECTION ======================= -->
+<section id="selection" class="card">
+  <p class="eyebrow">C · Model selection</p>
+  <h2>Which models were selected, and why</h2>
+  <div class="grid grid-2">
+    <div class="result-summary">
+      <h3>Classifier: {{ c.models[c.selected].name }}</h3>
+      <p><strong>Criterion:</strong> {{ c.selection_metric }}.</p>
+      <p><strong>Rule:</strong> {{ c.selection_rule }}</p>
+      <p><strong>Outcome:</strong> {{ c.selection_reason }}</p>
+    </div>
+    <div class="result-summary">
+      <h3>Regressor: {{ r.models[r.selected].name }}</h3>
+      <p><strong>Criterion:</strong> {{ r.selection_metric }}.</p>
+      <p><strong>Rule:</strong> {{ r.selection_rule }}</p>
+      <p><strong>Outcome:</strong> {{ r.selection_reason }}</p>
+    </div>
+  </div>
+  <p>Because the selection used only cross-validation on the training data, the test-set numbers above are an unbiased estimate of how the chosen models perform on new data from the <em>same</em> distribution. They still come from one random split of {{ "{:,}".format(metrics.dataset.rows) }} records, so they do not prove that one algorithm is better than another in general.</p>
+</section>
+
+<!-- ======================= DATASET AUDIT ======================= -->
+<section class="card">
+  <h2>Dataset audit: why classification scores are so high</h2>
+  <p>A tiny decision tree (depth {{ c.audit.tree_max_depth }}), fitted on the training data only, reaches <strong>{{ c.audit.tree_test_accuracy | pct }}</strong> test accuracy using the rules below. The <code>Rain</code> label appears to follow a few simple threshold rules. A Random Forest can learn such step-like boundaries, while a single linear boundary (Logistic Regression) cannot, which explains the gap between the two classifiers. It also strongly suggests the dataset is <strong>synthetic</strong>, so these near-perfect scores should not be expected on real weather data.</p>
+  <pre class="code-block" aria-label="Decision tree rules">{{ c.audit.tree_rules }}</pre>
+</section>
+
+<!-- ======================= D. ACADEMIC EXPLANATION ======================= -->
+<section id="concepts" class="card">
+  <p class="eyebrow">D · Academic explanation</p>
+  <h2>Key concepts</h2>
+  <div class="concepts">
+    <article><h3>Supervised learning</h3><p>The model learns a mapping from inputs to a known output using labelled examples, here the rows of the CSV. It is then used to predict the output for new inputs.</p></article>
+    <article><h3>Classification vs regression</h3><p>Classification predicts a <em>category</em> (<code>rain</code> / <code>no rain</code>). Regression predicts a <em>continuous number</em> (<code>Cloud_Cover</code>).</p></article>
+    <article><h3>Dependent &amp; independent variables</h3><p>The dependent variable (target, Y) is what we predict. The independent variables (features, X) are the inputs. For the regression, Y = <code>Cloud_Cover</code> and X = Temperature, Humidity, Wind_Speed, Pressure.</p></article>
+    <article><h3>Training &amp; testing data</h3><p>80% of the rows train the models. The other 20% are locked away and used once at the end to measure performance on data the models have never seen. Scalers are fitted on training data only, to avoid data leakage.</p></article>
+    <article><h3>Cross-validation</h3><p>The training data is split into 5 folds. Each fold takes one turn as a mini validation set. This tunes hyper-parameters and chooses between models without touching the test set.</p></article>
+    <article><h3>Overfitting</h3><p>A model overfits when it memorises noise in the training data: training scores are much better than test scores. Compare the training and test rows in the tables above.</p></article>
+    <article><h3>Evaluation metrics</h3><p><strong>Precision</strong>: of the predicted rain cases, how many were rain. <strong>Recall</strong>: of the actual rain cases, how many were caught. <strong>F1</strong>: their harmonic mean. <strong>ROC-AUC</strong>: how well the probabilities rank rain above no-rain across all thresholds. <strong>R²</strong>: share of variance explained. <strong>MAE / RMSE</strong>: average error size; RMSE penalises large errors more.</p></article>
+    <article><h3>Why compare two models?</h3><p>A simple, interpretable baseline (linear) shows whether a more flexible model (Random Forest) is actually worth its extra complexity. Without a baseline, a score has nothing to be compared against.</p></article>
+  </div>
+</section>
+
+<section id="limitations" class="card">
+  <h2>Limitations</h2>
+  <ul>
+    <li><strong>Unknown provenance and units.</strong> The CSV came without documentation, so units are not shown and the data may not represent real weather.</li>
+    <li><strong>Likely synthetic labels.</strong> <code>Rain</code> follows simple thresholds (see the audit), so high classification scores will not transfer to real-world forecasting.</li>
+    <li><strong>No signal for cloud cover.</strong> The four independent variables explain almost none of <code>Cloud_Cover</code>'s variation, so regression predictions are close to the average value.</li>
+    <li><strong>Probabilities are model estimates.</strong> Class weighting raises rain probabilities above the {{ metrics.dataset.target_distribution['rain'].percent }}% base rate. They are useful for ranking, not as calibrated real-world chances (see the Brier scores).</li>
+    <li><strong>One split, one dataset.</strong> Results may change with a different random split or new data. No time or location information is available.</li>
+    <li><strong>Extrapolation.</strong> Inputs outside the training ranges are accepted, with a warning, but predictions there are unreliable.</li>
+  </ul>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if metrics %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/evaluation.js') }}"></script>
+{% endif %}
+{% endblock %}

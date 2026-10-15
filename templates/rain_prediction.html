@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_macros.html" import number_field, model_select %}
+{% block title %}Rain Prediction{% endblock %}
+{% block content %}
+<header class="page-header">
+  <p class="eyebrow">Classification</p>
+  <h1>Rain Prediction</h1>
+  <p class="lead-dark">Enter five measurements. The trained classifier estimates the probability of the <code>rain</code> class and predicts <strong>Rain</strong> or <strong>No Rain</strong>. Nothing is fetched from live weather services.</p>
+</header>
+
+{% if model_error %}
+  <div class="card empty-state" role="alert">
+    <h2>Model not available</h2>
+    <p>{{ model_error }}</p>
+  </div>
+{% else %}
+<div class="predict-layout">
+  <form id="rain-form" class="card form-card" novalidate data-endpoint="{{ url_for('api_predict_rain') }}">
+    <h2>Input measurements</h2>
+    <div class="form-grid">
+      {% for name in features %}{{ number_field(name, limits, descriptions, summary) }}{% endfor %}
+    </div>
+    {{ model_select(choices, 'rain-model') }}
+    <p class="form-error" role="alert" hidden></p>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-lg">
+        <span class="btn-label">Predict Rain</span><span class="spinner" aria-hidden="true"></span>
+      </button>
+      <button type="reset" class="btn btn-secondary">Reset</button>
+    </div>
+  </form>
+
+  <section class="card result-card" aria-labelledby="rain-result-heading" aria-live="polite" aria-busy="false" id="rain-result">
+    <h2 id="rain-result-heading">Prediction</h2>
+    <div class="result-empty">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 18 9.5a3.75 3.75 0 0 1-.5 7.5z"/></svg>
+      <p>Fill in all five values and press <strong>Predict Rain</strong>.</p>
+    </div>
+    <div class="result-loading" hidden><span class="spinner spinner-dark" aria-hidden="true"></span> Running the model…</div>
+    <div class="result-body" hidden>
+      <p class="result-kicker">Estimated rain probability</p>
+      <p class="result-big" data-out="probability">–</p>
+      <div class="meter" role="img" data-out="meter-label">
+        <div class="meter-fill" data-out="meter"></div>
+        <div class="meter-threshold" data-out="threshold-marker"><span data-out="threshold-label"></span></div>
+      </div>
+      <div class="meter-scale" aria-hidden="true"><span>0%</span><span>50%</span><span>100%</span></div>
+      <p class="result-label">Prediction: <span class="badge" data-out="label">–</span></p>
+      <dl class="kv">
+        <dt>Model used</dt><dd data-out="model">–</dd>
+        <dt>Decision threshold</dt><dd data-out="threshold">–</dd>
+      </dl>
+      <p data-out="interpretation"></p>
+      <ul class="warnings" data-out="warnings"></ul>
+      <p class="muted small">This probability is the model's estimate based on the supplied dataset. It is not a guaranteed real-world forecast, and because training used class weighting it should not be read as a calibrated real-world chance of rain.</p>
+    </div>
+  </section>
+</div>
+{% endif %}
+
+<details class="card details-card">
+  <summary>How does this prediction work?</summary>
+  <ol>
+    <li>Your values are sent to the Flask server (<code>POST /api/predict-rain</code>) and validated: each must be present, numeric, finite and physically possible. Values outside the training range are still accepted, but you get a warning because the model is extrapolating. Inputs are never clipped.</li>
+    <li>The saved model pipeline is loaded from <code>models/rain_classifier.joblib</code>. Nothing is retrained.</li>
+    <li><code>predict_proba</code> returns a probability for each class. The <code>rain</code> column is found from the model's <code>classes_</code>, not assumed to be at a fixed position.</li>
+    <li>The label is <strong>Rain</strong> when that probability is at or above the decision threshold{% if metrics %} ({{ (metrics.classification.threshold * 100) | round | int }}%){% endif %}. The same rule produced the test-set metrics on the evaluation page.</li>
+  </ol>
+  {% if metrics %}
+  <p class="muted">The selected model reached a rain-class F1 of {{ metrics.classification.models[metrics.classification.selected].test.f1_rain | num(3) }} on the held-out test set. <a href="{{ url_for('model_evaluation_page') }}#classification">See the full evaluation.</a></p>
+  {% endif %}
+</details>
+{% endblock %}
+{% block scripts %}<script src="{{ url_for('static', filename='js/rain_prediction.js') }}"></script>{% endblock %}

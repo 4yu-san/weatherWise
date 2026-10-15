@@ -1,0 +1,41 @@
+"""Shared pytest fixtures."""
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from ml import config  # noqa: E402
+from ml.data import load_dataset  # noqa: E402
+
+
+@pytest.fixture(scope="session")
+def df():
+    return load_dataset()
+
+
+@pytest.fixture(scope="session")
+def trained():
+    """Train both tasks once per test session (in memory, nothing written)."""
+    from ml.train_models import train_cloud_regressors, train_rain_classifiers
+    data = load_dataset()
+    rain_bundle, rain_summary = train_rain_classifiers(data)
+    cloud_bundle, cloud_summary = train_cloud_regressors(data)
+    return {"rain": (rain_bundle, rain_summary), "cloud": (cloud_bundle, cloud_summary)}
+
+
+@pytest.fixture(scope="session")
+def ensure_artifacts():
+    """The API tests need saved artifacts; train them if they are missing."""
+    paths = [config.RAIN_MODEL_PATH, config.CLOUD_MODEL_PATH, config.METRICS_PATH]
+    if not all(p.exists() for p in paths):
+        from ml.train_models import main
+        assert main() == 0
+
+
+@pytest.fixture()
+def client(ensure_artifacts):
+    from app import app
+    app.config.update(TESTING=True)
+    return app.test_client()

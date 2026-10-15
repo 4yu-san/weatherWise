@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-text">
+    <p class="eyebrow">Supervised machine learning mini-project</p>
+    <h1>WeatherWise: Weather Prediction &amp; ML Analysis</h1>
+    <p class="lead">Two supervised learning tasks on one weather dataset: <strong>classifying</strong> whether rain is likely, and a <strong>multiple regression</strong> that estimates cloud cover. Each task compares two models, and every number on this site comes from the training pipeline.</p>
+    <div class="hero-actions">
+      <a class="btn btn-light" href="{{ url_for('rain_prediction_page') }}">Predict rain</a>
+      <a class="btn btn-ghost" href="{{ url_for('model_evaluation_page') }}">See evaluation</a>
+    </div>
+  </div>
+  <svg class="hero-art" viewBox="0 0 200 140" aria-hidden="true">
+    <circle cx="132" cy="44" r="26" fill="#f5b83d" opacity=".95"/>
+    <path d="M52 112a26 26 0 0 1-2.6-51.9A34 34 0 0 1 114 66a23 23 0 0 1-2 46z" fill="rgba(255,255,255,.92)"/>
+    <g stroke="rgba(255,255,255,.75)" stroke-width="4" stroke-linecap="round">
+      <line x1="62" y1="122" x2="56" y2="134"/><line x1="82" y1="122" x2="76" y2="134"/><line x1="102" y1="122" x2="96" y2="134"/>
+    </g>
+  </svg>
+</section>
+
+<div class="notice notice-info" role="note">
+  <strong>Disclaimer:</strong> this is an educational model built for a college project. It is <em>not</em> an official weather forecasting service and does not use live weather data.
+</div>
+
+<section class="grid grid-2 feature-cards" aria-label="Project features">
+  <article class="card feature-card">
+    <div class="feature-icon rain" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M7 17a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 18 9.5a3.75 3.75 0 0 1-.5 7.5z"/><path d="M8 20l-1 2M12 20l-1 2M16 20l-1 2"/></svg>
+    </div>
+    <h2>Rain Prediction</h2>
+    <p class="muted">Classification · target <code>Rain</code> · 5 input features</p>
+    <p>Enter temperature, humidity, wind speed, cloud cover and pressure. The model returns <em>Rain</em> or <em>No Rain</em> and its estimated probability of rain.</p>
+    {% if metrics %}
+      {% set c = metrics.classification %}{% set best = c.models[c.selected] %}
+      <dl class="mini-stats">
+        <div><dt>Selected model</dt><dd>{{ best.name }}</dd></div>
+        <div><dt>Rain F1 (test)</dt><dd>{{ best.test.f1_rain | num(3) }}</dd></div>
+        <div><dt>Rain recall (test)</dt><dd>{{ best.test.recall_rain | num(3) }}</dd></div>
+      </dl>
+    {% endif %}
+    <a class="btn btn-primary" href="{{ url_for('rain_prediction_page') }}">Open Rain Prediction</a>
+  </article>
+
+  <article class="card feature-card">
+    <div class="feature-icon cloud" aria-hidden="true">
+      <svg viewBox="0 0 24 24"><path d="M7 19a4.5 4.5 0 0 1-.5-8.97A6 6 0 0 1 18 11.5a3.75 3.75 0 0 1-.5 7.5z"/></svg>
+    </div>
+    <h2>Cloud Cover Regression</h2>
+    <p class="muted">Multiple regression · target <code>Cloud_Cover</code> · 4 input features</p>
+    <p>Estimates <code>Cloud_Cover</code> from Temperature, Humidity, Wind_Speed and Pressure. Multiple Linear Regression is compared against a Random Forest Regressor.</p>
+    {% if metrics %}
+      {% set r = metrics.regression %}{% set best = r.models[r.selected] %}
+      <dl class="mini-stats">
+        <div><dt>Selected model</dt><dd>{{ best.name }}</dd></div>
+        <div><dt>R² (test)</dt><dd>{{ best.test.r2 | num(3) }}</dd></div>
+        <div><dt>RMSE (test)</dt><dd>{{ best.test.rmse | num(2) }}</dd></div>
+      </dl>
+    {% endif %}
+    <a class="btn btn-primary" href="{{ url_for('cloud_regression_page') }}">Open Cloud Cover Regression</a>
+  </article>
+</section>
+
+<section class="card" aria-labelledby="dataset-heading">
+  <h2 id="dataset-heading">Dataset overview</h2>
+  {% if data_error %}
+    <div class="notice notice-error" role="alert"><strong>Dataset problem:</strong> {{ data_error }}</div>
+  {% elif summary %}
+    <div class="stat-row">
+      <div class="stat"><span class="stat-value">{{ "{:,}".format(summary.rows) }}</span><span class="stat-label">records</span></div>
+      <div class="stat"><span class="stat-value">{{ summary.features | length }}</span><span class="stat-label">numeric features</span></div>
+      <div class="stat"><span class="stat-value">{{ summary.missing_values }}</span><span class="stat-label">missing values</span></div>
+      <div class="stat"><span class="stat-value">{{ summary.target_distribution['rain'].percent }}%</span><span class="stat-label">labelled “rain”</span></div>
+    </div>
+
+    <h3>Target distribution (<code>Rain</code>)</h3>
+    {% set d = summary.target_distribution %}
+    <div class="dist-bar" role="img" aria-label="no rain: {{ d['no rain'].count }} records ({{ d['no rain'].percent }}%); rain: {{ d['rain'].count }} records ({{ d['rain'].percent }}%)">
+      <span class="dist-seg seg-norain" style="width: {{ d['no rain'].percent }}%"></span>
+      <span class="dist-seg seg-rain" style="width: {{ d['rain'].percent }}%"></span>
+    </div>
+    <ul class="legend">
+      <li><span class="swatch seg-norain" aria-hidden="true"></span>no rain: {{ "{:,}".format(d['no rain'].count) }} ({{ d['no rain'].percent }}%)</li>
+      <li><span class="swatch seg-rain" aria-hidden="true"></span>rain: {{ "{:,}".format(d['rain'].count) }} ({{ d['rain'].percent }}%)</li>
+    </ul>
+    <p class="muted">The classes are <strong>imbalanced</strong>: a model that always said “no rain” would already be about {{ d['no rain'].percent | round | int }}% accurate, which is why the evaluation focuses on rain-class recall and F1.</p>
+
+    <h3>Features</h3>
+    <div class="table-wrap">
+      <table class="data-table">
+        <caption class="visually-hidden">Summary statistics of each column</caption>
+        <thead><tr><th scope="col">Column</th><th scope="col">Min</th><th scope="col">Max</th><th scope="col">Mean</th><th scope="col">Std. dev.</th></tr></thead>
+        <tbody>
+        {% for name, s in summary.feature_stats.items() %}
+          <tr><th scope="row"><code>{{ name }}</code></th><td>{{ s.min | num(2) }}</td><td>{{ s.max | num(2) }}</td><td>{{ s.mean | num(2) }}</td><td>{{ s.std | num(2) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="notice notice-warn" role="note"><strong>Provenance &amp; units:</strong> {{ summary.provenance_note }}</div>
+  {% endif %}
+</section>
+
+<section class="card" aria-labelledby="best-heading">
+  <h2 id="best-heading">Best-performing models</h2>
+  {% if metrics %}
+    {% set c = metrics.classification %}{% set r = metrics.regression %}
+    {% set bc = c.models[c.selected] %}{% set br = r.models[r.selected] %}
+    <div class="grid grid-2">
+      <div class="result-summary">
+        <h3>Classifier: {{ bc.name }}</h3>
+        <p class="muted">Chosen by: {{ c.selection_metric | lower }}.</p>
+        <dl class="kv">
+          <dt>Accuracy</dt><dd>{{ bc.test.accuracy | pct }}</dd>
+          <dt>Rain precision</dt><dd>{{ bc.test.precision_rain | num(3) }}</dd>
+          <dt>Rain recall</dt><dd>{{ bc.test.recall_rain | num(3) }}</dd>
+          <dt>Rain F1</dt><dd>{{ bc.test.f1_rain | num(3) }}</dd>
+          <dt>ROC-AUC</dt><dd>{{ bc.test.roc_auc | num(3) }}</dd>
+        </dl>
+      </div>
+      <div class="result-summary">
+        <h3>Regressor: {{ br.name }}</h3>
+        <p class="muted">Chosen by: {{ r.selection_metric | lower }}.</p>
+        <dl class="kv">
+          <dt>R²</dt><dd>{{ br.test.r2 | num(4) }}</dd>
+          <dt>MAE</dt><dd>{{ br.test.mae | num(2) }}</dd>
+          <dt>RMSE</dt><dd>{{ br.test.rmse | num(2) }}</dd>
+          <dt>Mean-only baseline RMSE</dt><dd>{{ r.mean_baseline.rmse | num(2) }}</dd>
+        </dl>
+        {% if br.test.r2 < 0.05 %}
+        <p class="notice notice-warn compact">R² is close to zero: in this dataset the four inputs explain almost none of the variation in <code>Cloud_Cover</code>. See the evaluation page for details.</p>
+        {% endif %}
+      </div>
+    </div>
+    <p class="muted small">Scores are from a held-out test set of {{ c.n_test }} records (classification) and {{ r.n_test }} records (regression), produced by the training run on {{ metrics.generated_at }}. They come from one random split, so treat them as estimates rather than proof that one model is always better.</p>
+  {% else %}
+    <div class="empty-state">
+      <p><strong>No trained models yet.</strong></p>
+      <p>Run <code>python -m ml.train_models</code> in the project folder, then reload this page.</p>
+    </div>
+  {% endif %}
+</section>
+
+<section class="grid grid-2" aria-label="The two ML tasks">
+  <article class="card">
+    <h2>Task 1: Classification</h2>
+    <p>The output is a <strong>category</strong>: <code>rain</code> or <code>no rain</code>. The models learn from 5 independent variables and return a probability for the <code>rain</code> class. A decision threshold turns that probability into a label.</p>
+    <p class="muted">Models compared: Logistic Regression and Random Forest Classifier.</p>
+  </article>
+  <article class="card">
+    <h2>Task 2: Multiple Regression</h2>
+    <p>The output is a <strong>continuous number</strong>. Dependent variable <code>Y = Cloud_Cover</code>; independent variables <code>X = Temperature, Humidity, Wind_Speed, Pressure</code>. <code>Cloud_Cover</code> is never used to predict itself.</p>
+    <p class="muted">Models compared: Multiple Linear Regression and Random Forest Regressor.</p>
+  </article>
+</section>
+{% endblock %}
